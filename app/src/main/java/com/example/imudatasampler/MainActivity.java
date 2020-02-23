@@ -24,10 +24,11 @@ import android.widget.Button;
 import android.widget.TextView;
 import android.widget.Toast;
 
+import org.apache.commons.lang3.ArrayUtils;
+
 import java.io.ByteArrayOutputStream;
 import java.io.File;
 import java.io.FileOutputStream;
-import java.io.IOException;
 import java.nio.ByteBuffer;
 import java.util.ArrayList;
 import java.util.List;
@@ -112,17 +113,16 @@ public class MainActivity extends AppCompatActivity implements SensorEventListen
                 Log.d(TAG, "BLE characteristics changed.");
                 writeCharacteristics();
             } else if (BluetoothLeService.ACTION_DATA_AVAILABLE.equals(action)) {
-                byte[] value = intent.getByteArrayExtra(BluetoothLeService.EXTRA_DATA);
-                mByteArrayOutputStream.write(value, 0, value.length);
-                if (mByteArrayOutputStream.size() >= 1024 * 1024 * 100) {
-                    writeToFile();
-                }
-//                Log.d(TAG, ((value[4] << 8) | (value[5] & 0x00ff)) + " "
-//                        + ((value[6] << 8) | (value[7] & 0x00ff)) + " "
-//                        + ((value[8] << 8) | (value[9] & 0x00ff)) + " "
-//                        + ((value[10] << 8) | (value[11] & 0x00ff)) + " "
-//                        + ((value[12] << 8) | (value[13] & 0x00ff)) + " "
-//                        + ((value[14] << 8) | (value[15] & 0x00ff)));
+                byte[] values = intent.getByteArrayExtra(BluetoothLeService.EXTRA_DATA);
+                byte[] timestamp = long2ByteArray(System.currentTimeMillis());
+                mByteArrayOutputStream.write(ArrayUtils.addAll(values, timestamp),
+                        0, values.length + timestamp.length);
+                Log.d(TAG, ((values[4] << 8) | (values[5] & 0x00ff)) + " "
+                        + ((values[6] << 8) | (values[7] & 0x00ff)) + " "
+                        + ((values[8] << 8) | (values[9] & 0x00ff)) + " "
+                        + ((values[10] << 8) | (values[11] & 0x00ff)) + " "
+                        + ((values[12] << 8) | (values[13] & 0x00ff)) + " "
+                        + ((values[14] << 8) | (values[15] & 0x00ff)));
             }
         }
     };
@@ -146,7 +146,7 @@ public class MainActivity extends AppCompatActivity implements SensorEventListen
                         connectionState = STATE_DISCONNECTED;
                         updateConnectionState(R.string.disconnected);
                         unregisterListeners();
-                        writeToFile();
+                        writeDataToFile();
                     }
                 }
             }
@@ -209,33 +209,18 @@ public class MainActivity extends AppCompatActivity implements SensorEventListen
         if (event.sensor.getType() == Sensor.TYPE_ACCELEROMETER) {
             System.arraycopy(event.values, 0, accelerometerReading,
                     0, accelerometerReading.length);
-            for (float f : accelerometerReading) {
-                try {
-                    mAccelerometerByteArray.write(float2ByteArray(f));
-                } catch (IOException e) {
-                    Log.e(TAG, e.getStackTrace().toString());
-                }
-            }
+            byte[] b = floatArray2ByteArray(accelerometerReading);
+            mAccelerometerByteArray.write(b, 0, b.length);
         } else if (event.sensor.getType() == Sensor.TYPE_MAGNETIC_FIELD) {
             System.arraycopy(event.values, 0, magnetometerReading,
                     0, magnetometerReading.length);
-            for (float f : magnetometerReading) {
-                try {
-                    mMagnetometerByteArray.write(float2ByteArray(f));
-                } catch (IOException e) {
-                    Log.e(TAG, e.getStackTrace().toString());
-                }
-            }
+            byte[] b = floatArray2ByteArray(magnetometerReading);
+            mMagnetometerByteArray.write(b, 0, b.length);
         } else if (event.sensor.getType() == Sensor.TYPE_GYROSCOPE) {
             System.arraycopy(event.values, 0, gyroscopeReading,
                     0, gyroscopeReading.length);
-            for (float f : gyroscopeReading) {
-                try {
-                    mGyroscopeByteArray.write(float2ByteArray(f));
-                } catch (IOException e) {
-                    Log.e(TAG, e.getStackTrace().toString());
-                }
-            }
+            byte[] b = floatArray2ByteArray(gyroscopeReading);
+            mGyroscopeByteArray.write(b, 0, b.length);
         }
     }
 
@@ -334,13 +319,13 @@ public class MainActivity extends AppCompatActivity implements SensorEventListen
         }
     }
 
-    private void writeToFile() {
+    private void writeDataToFile() {
         Log.d(TAG, "Save data to local storage.");
         long time = System.currentTimeMillis();
         File path = Environment.getExternalStoragePublicDirectory(
                 Environment.DIRECTORY_DOWNLOADS);
-        File file = new File(path, "eSense_imu_" + time + ".txt");
         try {
+            File file = new File(path, "eSense_imu_" + time);
             if (!file.exists()) {
                 file.createNewFile();
             }
@@ -349,7 +334,7 @@ public class MainActivity extends AppCompatActivity implements SensorEventListen
             mByteArrayOutputStream.reset();
             fos.close();
 
-            file = new File(path, "accelerometer_" + time + ".txt");
+            file = new File(path, "accelerometer_" + time);
             if (!file.exists()) {
                 file.createNewFile();
             }
@@ -358,7 +343,7 @@ public class MainActivity extends AppCompatActivity implements SensorEventListen
             mAccelerometerByteArray.reset();
             fos.close();
 
-            file = new File(path, "gyroscope_" + time + ".txt");
+            file = new File(path, "gyroscope_" + time);
             if (!file.exists()) {
                 file.createNewFile();
             }
@@ -367,7 +352,7 @@ public class MainActivity extends AppCompatActivity implements SensorEventListen
             mGyroscopeByteArray.reset();
             fos.close();
 
-            file = new File(path, "magnetometer_" + time + ".txt");
+            file = new File(path, "magnetometer_" + time);
             if (!file.exists()) {
                 file.createNewFile();
             }
@@ -402,7 +387,20 @@ public class MainActivity extends AppCompatActivity implements SensorEventListen
         sensorManager.unregisterListener(this);
     }
 
+    public static byte [] long2ByteArray (long value) {
+        return ByteBuffer.allocate(Long.BYTES).putLong(value).array();
+    }
+
     public static byte [] float2ByteArray (float value) {
-        return ByteBuffer.allocate(4).putFloat(value).array();
+        return ByteBuffer.allocate(Float.BYTES).putFloat(value).array();
+    }
+
+    public static byte[] floatArray2ByteArray(float[] values){
+        ByteBuffer buffer = ByteBuffer.allocate(Float.BYTES * values.length + Long.BYTES);
+        for (float value : values){
+            buffer.putFloat(value);
+        }
+        buffer.putLong(System.currentTimeMillis());
+        return buffer.array();
     }
 }
