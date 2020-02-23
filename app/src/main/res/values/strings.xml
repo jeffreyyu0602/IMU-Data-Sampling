@@ -1,0 +1,17 @@
+<resources>
+    <string name="app_name">IMU Data Sampler</string>
+
+    <string name="ble_not_supported">BLE is not supported</string>
+    <string name="label_device_address">Device address:</string>
+    <string name="label_state">State:</string>
+    <string name="connected">Connected</string>
+    <string name="disconnected">Disconnected</string>
+    <string name="title_devices">BLE Device Scan</string>
+    <string name="error_bluetooth_not_supported">Bluetooth not supported.</string>
+
+    <string name="sample_button_text">GO</string>
+    <string name="configuring_sampling">Configuring Sampling Interval</string>
+    <string name="starting_sampling">Starting IMU Data Sampling</string>
+    <string name="subscribing_to_notification">Subscribing to BLE Notification</string>
+    <string name="sampling">Sampling</string>
+</resources>
