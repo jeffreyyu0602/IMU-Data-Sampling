@@ -16,6 +16,7 @@ import android.hardware.SensorEvent;
 import android.hardware.SensorEventListener;
 import android.hardware.SensorManager;
 import android.os.Bundle;
+import android.os.Environment;
 import android.os.IBinder;
 import android.util.Log;
 import android.view.View;
@@ -28,6 +29,7 @@ import java.io.File;
 import java.io.FileOutputStream;
 import java.io.IOException;
 import java.nio.ByteBuffer;
+import java.util.ArrayList;
 import java.util.List;
 
 import androidx.appcompat.app.AppCompatActivity;
@@ -46,7 +48,7 @@ public class MainActivity extends AppCompatActivity implements SensorEventListen
     private static final int STATE_SAMPLING = 6;
 
     private static final int REQUEST_ENABLE_BT = 1;
-    private static final int ACCESS_FINE_LOCATION_PERMISSION = 85;
+    private static final int REQUEST_ID_MULTIPLE_PERMISSIONS = 85;
 
     private TextView mConnectionState;
     private int connectionState = STATE_DISCONNECTED;
@@ -112,7 +114,7 @@ public class MainActivity extends AppCompatActivity implements SensorEventListen
             } else if (BluetoothLeService.ACTION_DATA_AVAILABLE.equals(action)) {
                 byte[] value = intent.getByteArrayExtra(BluetoothLeService.EXTRA_DATA);
                 mByteArrayOutputStream.write(value, 0, value.length);
-                if (mByteArrayOutputStream.size() == 1000) {
+                if (mByteArrayOutputStream.size() >= 1024 * 1024 * 100) {
                     writeToFile();
                 }
 //                Log.d(TAG, ((value[4] << 8) | (value[5] & 0x00ff)) + " "
@@ -144,6 +146,7 @@ public class MainActivity extends AppCompatActivity implements SensorEventListen
                         connectionState = STATE_DISCONNECTED;
                         updateConnectionState(R.string.disconnected);
                         unregisterListeners();
+                        writeToFile();
                     }
                 }
             }
@@ -154,6 +157,9 @@ public class MainActivity extends AppCompatActivity implements SensorEventListen
 
         // Create an output stream in which the data is written into a byte array.
         mByteArrayOutputStream = new ByteArrayOutputStream();
+        mAccelerometerByteArray = new ByteArrayOutputStream();
+        mGyroscopeByteArray = new ByteArrayOutputStream();
+        mMagnetometerByteArray = new ByteArrayOutputStream();
 
         // Use this check to determine whether BLE is supported on the device.  Then you can
         // selectively disable BLE-related features.
@@ -162,13 +168,24 @@ public class MainActivity extends AppCompatActivity implements SensorEventListen
             finish();
         }
 
+        List<String> listPermissionsNeeded = new ArrayList<>();
         // Check if the app can access precise location. Require permission if not.
         if (ContextCompat.checkSelfPermission(this,
                 Manifest.permission.ACCESS_FINE_LOCATION)
                 != PackageManager.PERMISSION_GRANTED) {
+            listPermissionsNeeded.add(Manifest.permission.ACCESS_FINE_LOCATION);
+        }
+
+        if (ActivityCompat.checkSelfPermission(this,
+                Manifest.permission.WRITE_EXTERNAL_STORAGE)
+                != PackageManager.PERMISSION_GRANTED) {
+            listPermissionsNeeded.add(Manifest.permission.WRITE_EXTERNAL_STORAGE);
+        }
+
+        if (!listPermissionsNeeded.isEmpty()) {
             ActivityCompat.requestPermissions(this,
-                    new String[]{Manifest.permission.ACCESS_FINE_LOCATION},
-                    ACCESS_FINE_LOCATION_PERMISSION);
+                    listPermissionsNeeded.toArray(new String[listPermissionsNeeded.size()]),
+                    REQUEST_ID_MULTIPLE_PERMISSIONS);
         }
 
         // Bind service.
@@ -318,8 +335,11 @@ public class MainActivity extends AppCompatActivity implements SensorEventListen
     }
 
     private void writeToFile() {
+        Log.d(TAG, "Save data to local storage.");
         long time = System.currentTimeMillis();
-        File file = getExternalFilesDir( "eSense_imu_" + time + ".txt");
+        File path = Environment.getExternalStoragePublicDirectory(
+                Environment.DIRECTORY_DOWNLOADS);
+        File file = new File(path, "eSense_imu_" + time + ".txt");
         try {
             if (!file.exists()) {
                 file.createNewFile();
@@ -329,7 +349,7 @@ public class MainActivity extends AppCompatActivity implements SensorEventListen
             mByteArrayOutputStream.reset();
             fos.close();
 
-            file = getExternalFilesDir( "accelerometer_" + time + ".txt");
+            file = new File(path, "accelerometer_" + time + ".txt");
             if (!file.exists()) {
                 file.createNewFile();
             }
@@ -338,7 +358,7 @@ public class MainActivity extends AppCompatActivity implements SensorEventListen
             mAccelerometerByteArray.reset();
             fos.close();
 
-            file = getExternalFilesDir( "gyroscope_" + time + ".txt");
+            file = new File(path, "gyroscope_" + time + ".txt");
             if (!file.exists()) {
                 file.createNewFile();
             }
@@ -347,7 +367,7 @@ public class MainActivity extends AppCompatActivity implements SensorEventListen
             mGyroscopeByteArray.reset();
             fos.close();
 
-            file = getExternalFilesDir( "magnetometer_" + time + ".txt");
+            file = new File(path, "magnetometer_" + time + ".txt");
             if (!file.exists()) {
                 file.createNewFile();
             }
