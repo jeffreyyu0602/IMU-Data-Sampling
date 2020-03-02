@@ -29,6 +29,7 @@ import org.apache.commons.lang3.ArrayUtils;
 import java.io.ByteArrayOutputStream;
 import java.io.File;
 import java.io.FileOutputStream;
+import java.io.IOException;
 import java.nio.ByteBuffer;
 import java.util.ArrayList;
 import java.util.List;
@@ -63,10 +64,10 @@ public class MainActivity extends AppCompatActivity implements SensorEventListen
     private final float[] magnetometerReading = new float[3];
     private final float[] gyroscopeReading = new float[3];
 
-    private ByteArrayOutputStream mByteArrayOutputStream;
-    private ByteArrayOutputStream mAccelerometerByteArray;
-    private ByteArrayOutputStream mMagnetometerByteArray;
-    private ByteArrayOutputStream mGyroscopeByteArray;
+    private ByteArrayOutputStream mESenseImuByteArrayOutputStream;
+    private ByteArrayOutputStream mAccelerometerByteArrayOutputStream;
+    private ByteArrayOutputStream mMagnetometerByteArrayOutputStream;
+    private ByteArrayOutputStream mGyroscopeByteArrayOutputStream;
 
     // Code to manage Service lifecycle.
     private final ServiceConnection mServiceConnection = new ServiceConnection() {
@@ -115,7 +116,7 @@ public class MainActivity extends AppCompatActivity implements SensorEventListen
             } else if (BluetoothLeService.ACTION_DATA_AVAILABLE.equals(action)) {
                 byte[] values = intent.getByteArrayExtra(BluetoothLeService.EXTRA_DATA);
                 byte[] timestamp = long2ByteArray(System.currentTimeMillis());
-                mByteArrayOutputStream.write(ArrayUtils.addAll(values, timestamp),
+                mESenseImuByteArrayOutputStream.write(ArrayUtils.addAll(values, timestamp),
                         0, values.length + timestamp.length);
                 Log.d(TAG, ((values[4] << 8) | (values[5] & 0x00ff)) + " "
                         + ((values[6] << 8) | (values[7] & 0x00ff)) + " "
@@ -146,7 +147,19 @@ public class MainActivity extends AppCompatActivity implements SensorEventListen
                         connectionState = STATE_DISCONNECTED;
                         updateConnectionState(R.string.disconnected);
                         unregisterListeners();
-                        writeDataToFile();
+
+                        Log.d(TAG, "Save byte arrays to external storage.");
+                        long time = System.currentTimeMillis();
+                        File path = Environment.getExternalStoragePublicDirectory(
+                                Environment.DIRECTORY_DOWNLOADS);
+                        File file = new File(path, time + "_esense_imu_readings");
+                        writeByteArrayToExternalStorage(file, mESenseImuByteArrayOutputStream);
+                        file = new File(path, time + "_accelerometer_readings" + time);
+                        writeByteArrayToExternalStorage(file, mAccelerometerByteArrayOutputStream);
+                        file = new File(path, time + "_gyroscope_readings" + time);
+                        writeByteArrayToExternalStorage(file, mGyroscopeByteArrayOutputStream);
+                        file = new File(path, time + "_magnetometer_readings" + time);
+                        writeByteArrayToExternalStorage(file, mMagnetometerByteArrayOutputStream);
                     }
                 }
             }
@@ -156,10 +169,10 @@ public class MainActivity extends AppCompatActivity implements SensorEventListen
         mConnectionState = findViewById(R.id.connection_state);
 
         // Create an output stream in which the data is written into a byte array.
-        mByteArrayOutputStream = new ByteArrayOutputStream();
-        mAccelerometerByteArray = new ByteArrayOutputStream();
-        mGyroscopeByteArray = new ByteArrayOutputStream();
-        mMagnetometerByteArray = new ByteArrayOutputStream();
+        mESenseImuByteArrayOutputStream = new ByteArrayOutputStream();
+        mAccelerometerByteArrayOutputStream = new ByteArrayOutputStream();
+        mGyroscopeByteArrayOutputStream = new ByteArrayOutputStream();
+        mMagnetometerByteArrayOutputStream = new ByteArrayOutputStream();
 
         // Use this check to determine whether BLE is supported on the device.  Then you can
         // selectively disable BLE-related features.
@@ -191,6 +204,7 @@ public class MainActivity extends AppCompatActivity implements SensorEventListen
         // Bind service.
         Intent gattServiceIntent = new Intent(this, BluetoothLeService.class);
         boolean result = bindService(gattServiceIntent, mServiceConnection, BIND_AUTO_CREATE);
+        Log.d(TAG, "Bind service result=" + result);
 
         // Initialize a SensorManager and get different sensors.
         sensorManager = (SensorManager) getSystemService(Context.SENSOR_SERVICE);
@@ -210,17 +224,17 @@ public class MainActivity extends AppCompatActivity implements SensorEventListen
             System.arraycopy(event.values, 0, accelerometerReading,
                     0, accelerometerReading.length);
             byte[] b = floatArray2ByteArray(accelerometerReading);
-            mAccelerometerByteArray.write(b, 0, b.length);
+            mAccelerometerByteArrayOutputStream.write(b, 0, b.length);
         } else if (event.sensor.getType() == Sensor.TYPE_MAGNETIC_FIELD) {
             System.arraycopy(event.values, 0, magnetometerReading,
                     0, magnetometerReading.length);
             byte[] b = floatArray2ByteArray(magnetometerReading);
-            mMagnetometerByteArray.write(b, 0, b.length);
+            mMagnetometerByteArrayOutputStream.write(b, 0, b.length);
         } else if (event.sensor.getType() == Sensor.TYPE_GYROSCOPE) {
             System.arraycopy(event.values, 0, gyroscopeReading,
                     0, gyroscopeReading.length);
             byte[] b = floatArray2ByteArray(gyroscopeReading);
-            mGyroscopeByteArray.write(b, 0, b.length);
+            mGyroscopeByteArrayOutputStream.write(b, 0, b.length);
         }
     }
 
@@ -319,52 +333,6 @@ public class MainActivity extends AppCompatActivity implements SensorEventListen
         }
     }
 
-    private void writeDataToFile() {
-        Log.d(TAG, "Save data to local storage.");
-        long time = System.currentTimeMillis();
-        File path = Environment.getExternalStoragePublicDirectory(
-                Environment.DIRECTORY_DOWNLOADS);
-        try {
-            File file = new File(path, "eSense_imu_" + time);
-            if (!file.exists()) {
-                file.createNewFile();
-            }
-            FileOutputStream fos = new FileOutputStream(file);
-            fos.write(mByteArrayOutputStream.toByteArray());
-            mByteArrayOutputStream.reset();
-            fos.close();
-
-            file = new File(path, "accelerometer_" + time);
-            if (!file.exists()) {
-                file.createNewFile();
-            }
-            fos = new FileOutputStream(file);
-            fos.write(mAccelerometerByteArray.toByteArray());
-            mAccelerometerByteArray.reset();
-            fos.close();
-
-            file = new File(path, "gyroscope_" + time);
-            if (!file.exists()) {
-                file.createNewFile();
-            }
-            fos = new FileOutputStream(file);
-            fos.write(mGyroscopeByteArray.toByteArray());
-            mGyroscopeByteArray.reset();
-            fos.close();
-
-            file = new File(path, "magnetometer_" + time);
-            if (!file.exists()) {
-                file.createNewFile();
-            }
-            fos = new FileOutputStream(file);
-            fos.write(mMagnetometerByteArray.toByteArray());
-            mMagnetometerByteArray.reset();
-            fos.close();
-        } catch (Exception e) {
-            Log.e(TAG, e.getMessage());
-        }
-    }
-
     private void registerListeners() {
         Sensor accelerometer = sensorManager.getDefaultSensor(Sensor.TYPE_ACCELEROMETER);
         if (accelerometer != null) {
@@ -387,15 +355,27 @@ public class MainActivity extends AppCompatActivity implements SensorEventListen
         sensorManager.unregisterListener(this);
     }
 
-    public static byte [] long2ByteArray (long value) {
+    private boolean writeByteArrayToExternalStorage(File file, ByteArrayOutputStream stream) {
+        try {
+            if (!file.exists()) {
+                file.createNewFile();
+            }
+            FileOutputStream fout = new FileOutputStream(file);
+            fout.write(stream.toByteArray());
+            stream.reset();
+            fout.close();
+            return true;
+        } catch (IOException e) {
+            Log.e(TAG, e.getStackTrace().toString());
+            return false;
+        }
+    }
+
+    private static byte [] long2ByteArray (long value) {
         return ByteBuffer.allocate(Long.BYTES).putLong(value).array();
     }
 
-    public static byte [] float2ByteArray (float value) {
-        return ByteBuffer.allocate(Float.BYTES).putFloat(value).array();
-    }
-
-    public static byte[] floatArray2ByteArray(float[] values){
+    private static byte[] floatArray2ByteArray(float[] values){
         ByteBuffer buffer = ByteBuffer.allocate(Float.BYTES * values.length + Long.BYTES);
         for (float value : values){
             buffer.putFloat(value);
